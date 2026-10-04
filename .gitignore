@@ -1,0 +1,22 @@
+.idea
+.vscode
+.c9
+_site
+*swp
+*.log
+*.bak
+
+node_modules
+.nyc_output
+/coverage
+.eslintcache
+
+lib
+test-results
+*.generated.js
+
+# local secrets
+.env
+.env.*
+*.pem
+*.key
