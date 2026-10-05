@@ -102,6 +102,9 @@ export const createFunctionAssignmentNode = /* #__PURE__ */ factory(name, depend
       const params = this.params
       const signature = join(this.types, ',')
       const syntax = name + '(' + join(this.params, ', ') + ')'
+      // the function definition in a serializable form, so that a Parser
+      // can serialize user defined functions to JSON (see Parser.toJSON)
+      const definition = { params, expr: this.expr.toString() }
 
       return function evalFunctionAssignmentNode (scope, args, context) {
         const signatures = {}
@@ -116,6 +119,7 @@ export const createFunctionAssignmentNode = /* #__PURE__ */ factory(name, depend
         }
         const fn = typed(name, signatures)
         fn.syntax = syntax
+        fn.functionAssignment = definition
 
         scope.set(name, fn)
 

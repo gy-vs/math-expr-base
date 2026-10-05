@@ -532,13 +532,14 @@ export interface MathJsInstance extends MathJsFactory {
 
   Unit: UnitCtor
   Matrix: MatrixCtor
+  Parser: ParserCtor
 
   /**
    * If null were to be included in this interface, it would be
    * auto-suggested as an import in VSCode. This causes issues because
    * `null` is not a valid label.
    *
-   * @see 
+   * @see
    */
   // null: number;
 
@@ -4465,6 +4466,28 @@ export interface Parser {
    * Completely clear the parser’s scope.
    */
   clear: () => void
+  /**
+   * Serialize the parser’s scope, containing all defined variables and
+   * functions, to a JSON object. The JSON can be turned into a Parser
+   * again via JSON.parse with the mathjs reviver, or via the static
+   * function Parser.fromJSON.
+   */
+  toJSON(): ParserJSON
+}
+
+export interface ParserJSON {
+  mathjs: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  values: { [key: string]: any }
+}
+
+export interface ParserCtor {
+  new (): Parser
+  /**
+   * Instantiate a Parser from a JSON object created with parser.toJSON()
+   * @param json A JSON object structured as `{"mathjs": "Parser", "values": {...}}`
+   */
+  fromJSON(json: ParserJSON): Parser
 }
 
 export interface Distribution {

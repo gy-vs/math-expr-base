@@ -1,5 +1,6 @@
 import { factory } from '../utils/factory.js'
 import { createEmptyMap, toObject } from '../utils/map.js'
+import { setSafeProperty } from '../utils/customs.js'
 
 const name = 'Parser'
 const dependencies = ['evaluate', 'parse']
@@ -20,6 +21,8 @@ export const createParserClass = /* #__PURE__ */ factory(name, dependencies, ({ 
    *    parser.remove(name)                   // clear a variable from the
    *                                          // parsers scope
    *    parser.clear()                        // clear the parsers scope
+   *    const json = parser.toJSON()          // serialize the parsers scope
+   *    const parser = Parser.fromJSON(json)  // revive a serialized parser
    *
    * Example usage:
    *    const parser = new Parser()
@@ -155,6 +158,73 @@ export const createParserClass = /* #__PURE__ */ factory(name, dependencies, ({ 
    */
   Parser.prototype.clear = function () {
     this.scope.clear()
+  }
+
+  /**
+   * Get a JSON representation of the parser, containing all variables and
+   * functions defined in the parsers scope. The JSON can be turned into a
+   * Parser again via `JSON.parse(json, math.reviver)` or via the static
+   * function `Parser.fromJSON`.
+   *
+   * Note that only functions defined via a function assignment in an
+   * expression (like `f(x) = x^2`) can be serialized. Functions assigned
+   * via `parser.set` cannot be serialized and will throw an error.
+   *
+   * @memberof Parser
+   * @returns {Object} Returns a JSON object structured as:
+   *                   `{"mathjs": "Parser", "values": {...}}`
+   */
+  Parser.prototype.toJSON = function () {
+    const values = {}
+
+    this.scope.forEach(function (value, name) {
+      if (typeof value === 'function') {
+        const definition = value.functionAssignment
+
+        if (!definition) {
+          throw new Error(
+            'Cannot serialize function "' + name + '" to JSON. ' +
+            'Only functions defined via a function assignment ' +
+            '(like "f(x) = x^2") can be serialized.')
+        }
+
+        setSafeProperty(values, name, {
+          mathjs: 'ParserFunction',
+          params: definition.params,
+          expr: definition.expr
+        })
+      } else {
+        setSafeProperty(values, name, value)
+      }
+    })
+
+    return {
+      mathjs: 'Parser',
+      values
+    }
+  }
+
+  /**
+   * Instantiate a Parser from a JSON object
+   * @memberof Parser
+   * @param {Object} json  A JSON object structured as:
+   *                       `{"mathjs": "Parser", "values": {...}}`
+   * @return {Parser} Returns a new Parser instance
+   */
+  Parser.fromJSON = function (json) {
+    const parser = new Parser()
+
+    Object.keys(json.values).forEach(function (name) {
+      const value = json.values[name]
+
+      if (value && value.mathjs === 'ParserFunction') {
+        parser.evaluate(name + '(' + value.params.join(', ') + ') = ' + value.expr)
+      } else {
+        parser.set(name, value)
+      }
+    })
+
+    return parser
   }
 
   return Parser

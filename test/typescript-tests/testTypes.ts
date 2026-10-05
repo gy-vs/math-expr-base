@@ -41,6 +41,8 @@ import {
   OperatorNodeFn,
   OperatorNodeOp,
   ParenthesisNode,
+  Parser,
+  ParserJSON,
   PolarCoordinates,
   QRDecomposition,
   RangeNode,
@@ -1164,6 +1166,39 @@ Expressions examples
 
   // clear defined functions and variables
   parser.clear()
+}
+
+/*
+Parser serialization examples
+*/
+{
+  const math = create(all)
+  const parser = math.parser()
+
+  parser.evaluate('k = 3')
+  parser.evaluate('f(x) = x^2 + k')
+
+  // serialize the parser's scope to JSON
+  const json: ParserJSON = parser.toJSON()
+  const text = JSON.stringify(parser)
+
+  // revive a parser via the mathjs reviver
+  const revived: Parser = JSON.parse(text, math.reviver)
+  assert.strictEqual(revived.evaluate('f(2)'), 7)
+
+  // revive a parser via the static Parser.fromJSON
+  const revived2: Parser = math.Parser.fromJSON(JSON.parse(text))
+  assert.strictEqual(revived2.evaluate('f(2)'), 7)
+
+  const revived3: Parser = math.Parser.fromJSON(json)
+  assert.strictEqual(revived3.evaluate('f(2)'), 7)
+
+  // the Parser class is available on the math instance
+  const parser2: Parser = new math.Parser()
+  assert.strictEqual(parser2.evaluate('1 + 2'), 3)
+
+  expectTypeOf(parser.toJSON()).toMatchTypeOf<ParserJSON>()
+  expectTypeOf(math.Parser.fromJSON(json)).toMatchTypeOf<Parser>()
 }
 
 /*

@@ -146,6 +146,139 @@ describe('parser', function () {
     assert.throws(() => parser.set('@specialChar', 5), /Invalid variable name/)
   })
 
+  describe('serialization', function () {
+    it('should serialize a parser to JSON', function () {
+      const parser = new Parser()
+
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+
+      const json = parser.toJSON()
+      assert.strictEqual(json.mathjs, 'Parser')
+      assert.strictEqual(json.values.k, 3)
+      assert.deepStrictEqual(json.values.f, {
+        mathjs: 'ParserFunction',
+        params: ['x'],
+        expr: 'x ^ 2 + k'
+      })
+    })
+
+    it('should stringify and revive a parser with variables of all types', function () {
+      const parser = new Parser()
+
+      parser.evaluate('k = 3')
+      parser.evaluate('L = 3 cm')
+      parser.evaluate('M = [1, 2; 3, 4]')
+      parser.evaluate('b = bignumber("0.1")')
+
+      const revived = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.ok(revived instanceof Parser)
+      assert.strictEqual(revived.get('k'), 3)
+
+      assert.ok(math.isUnit(revived.get('L')))
+      assert.strictEqual(revived.get('L').toString(), '3 cm')
+
+      assert.ok(math.isMatrix(revived.get('M')))
+      assert.deepStrictEqual(revived.get('M'), math.matrix([[1, 2], [3, 4]]))
+
+      assert.ok(math.isBigNumber(revived.get('b')))
+      assert.strictEqual(revived.get('b').toString(), '0.1')
+    })
+
+    it('should stringify and revive a parser with user defined functions', function () {
+      const parser = new Parser()
+
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+      parser.evaluate('h(x) = f(x) * 2')
+
+      const revived = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.ok(revived instanceof Parser)
+      assert.strictEqual(revived.evaluate('f(2)'), 7)
+      assert.strictEqual(revived.evaluate('h(2)'), 14)
+    })
+
+    it('should stringify and revive functions with multiple or no params', function () {
+      const parser = new Parser()
+
+      parser.evaluate('f(x, y) = x^y')
+      parser.evaluate('g() = 42')
+
+      const revived = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.strictEqual(revived.evaluate('f(2, 3)'), 8)
+      assert.strictEqual(revived.evaluate('g()'), 42)
+    })
+
+    it('should revive a parser via the static Parser.fromJSON', function () {
+      const parser = new Parser()
+
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+
+      const revived = Parser.fromJSON(JSON.parse(JSON.stringify(parser)))
+
+      assert.ok(revived instanceof Parser)
+      assert.strictEqual(revived.get('k'), 3)
+      assert.strictEqual(revived.evaluate('f(2)'), 7)
+    })
+
+    it('should serialize a revived parser again', function () {
+      const parser = new Parser()
+
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+
+      const revived = JSON.parse(JSON.stringify(parser), math.reviver)
+      const revived2 = JSON.parse(JSON.stringify(revived), math.reviver)
+
+      assert.ok(revived2 instanceof Parser)
+      assert.strictEqual(revived2.evaluate('f(2)'), 7)
+    })
+
+    it('should keep a revived parser independent from the original', function () {
+      const parser = new Parser()
+
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+
+      const revived = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      // define new variables and functions in the revived parser
+      revived.evaluate('k = 100')
+      revived.evaluate('g(x) = x^3')
+
+      assert.strictEqual(revived.evaluate('f(2)'), 104)
+      assert.strictEqual(revived.evaluate('g(2)'), 8)
+
+      // the original parser is unchanged
+      assert.strictEqual(parser.evaluate('f(2)'), 7)
+      assert.strictEqual(parser.get('g'), undefined)
+
+      // and the other way around
+      parser.evaluate('k = 42')
+      assert.strictEqual(revived.get('k'), 100)
+    })
+
+    it('should serialize and revive an empty parser', function () {
+      const revived = JSON.parse(JSON.stringify(new Parser()), math.reviver)
+
+      assert.ok(revived instanceof Parser)
+      assert.deepStrictEqual(revived.getAll(), {})
+    })
+
+    it('should throw a clear error when serializing a function assigned via set', function () {
+      const parser = new Parser()
+
+      parser.set('helper', function (x) { return x * 2 })
+
+      assert.throws(function () { parser.toJSON() }, /Cannot serialize function "helper"/)
+      assert.throws(function () { JSON.stringify(parser) }, /Cannot serialize function "helper"/)
+    })
+  })
+
   describe('security', function () {
     it('should return undefined when accessing what appears to be inherited properties', function () {
       try {
