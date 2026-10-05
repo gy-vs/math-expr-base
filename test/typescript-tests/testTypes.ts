@@ -41,6 +41,7 @@ import {
   OperatorNodeFn,
   OperatorNodeOp,
   ParenthesisNode,
+  Parser,
   PolarCoordinates,
   QRDecomposition,
   RangeNode,
@@ -2244,6 +2245,39 @@ JSON serialization/deserialization
   const stringified = JSON.stringify(data)
   const parsed = JSON.parse(stringified, math.reviver)
   assert.deepStrictEqual(parsed.bigNumber, math.bignumber('1.5'))
+}
+
+/*
+Parser JSON serialization/deserialization
+*/
+{
+  const math = create(all, {})
+
+  const parser = math.parser()
+  parser.evaluate('k = 3')
+  parser.evaluate('L = 3 cm')
+  parser.evaluate('f(x) = x^2 + k')
+  parser.evaluate('h(x) = f(x) * 2')
+
+  // toJSON returns a JSON object marked as a Parser
+  const json = parser.toJSON()
+  expectTypeOf(json.mathjs).toEqualTypeOf<'Parser'>()
+
+  // revive with JSON.parse and math.reviver
+  const text = JSON.stringify(parser)
+  const restored: Parser = JSON.parse(text, math.reviver)
+  expectTypeOf(restored).toMatchTypeOf<Parser>()
+  assert.strictEqual(restored.evaluate('f(2)').toString(), '7')
+  assert.strictEqual(restored.evaluate('h(2)').toString(), '14')
+
+  // static fromJSON on the Parser class exposed on the math instance
+  const fromStatic = math.Parser.fromJSON(JSON.parse(text))
+  expectTypeOf(fromStatic).toMatchTypeOf<Parser>()
+  assert.strictEqual(fromStatic.evaluate('f(2)').toString(), '7')
+
+  // the revived parser keeps working independently of the original
+  restored.evaluate('z = 9')
+  assert.strictEqual(parser.get('z'), undefined)
 }
 
 /*

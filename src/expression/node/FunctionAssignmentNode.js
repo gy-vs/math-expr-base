@@ -1,3 +1,4 @@
+import { factory } from '../../utils/factory.js'
 import { isNode } from '../../utils/is.js'
 
 import { keywords } from '../keywords.js'
@@ -5,7 +6,13 @@ import { escape } from '../../utils/string.js'
 import { forEach, join } from '../../utils/array.js'
 import { toSymbol } from '../../utils/latex.js'
 import { getPrecedence } from '../operators.js'
-import { factory } from '../../utils/factory.js'
+
+/**
+ * Symbol used to attach the FunctionAssignmentNode of a function defined in an
+ * expression (for example `f(x) = x^2`) to the function created for it. The
+ * link is used to serialize the function, for example by a Parser.
+ */
+export const functionAssignmentNode = Symbol('functionAssignmentNode')
 
 const name = 'FunctionAssignmentNode'
 const dependencies = [
@@ -91,6 +98,7 @@ export const createFunctionAssignmentNode = /* #__PURE__ */ factory(name, depend
      *                        evalNode(scope: Object, args: Object, context: *)
      */
     _compile (math, argNames) {
+      const node = this
       const childArgNames = Object.create(argNames)
       forEach(this.params, function (param) {
         childArgNames[param] = true
@@ -116,6 +124,8 @@ export const createFunctionAssignmentNode = /* #__PURE__ */ factory(name, depend
         }
         const fn = typed(name, signatures)
         fn.syntax = syntax
+        // link the node defining the function, needed for serialization
+        fn[functionAssignmentNode] = node
 
         scope.set(name, fn)
 

@@ -514,6 +514,7 @@ export interface MathJsInstance extends MathJsFactory {
 
   // Class-like constructors
   Node: NodeCtor
+  Parser: ParserCtor
   AccessorNode: AccessorNodeCtor
   ArrayNode: ArrayNodeCtor
   AssignmentNode: AssignmentNodeCtor
@@ -4465,6 +4466,28 @@ export interface Parser {
    * Completely clear the parser’s scope.
    */
   clear: () => void
+  /**
+   * Get a JSON representation of the parser containing all variables and
+   * functions in the parser’s scope with their mathjs type information.
+   * Read it back with `JSON.parse(text, math.reviver)` or `Parser.fromJSON`.
+   */
+  toJSON(): ParserJSON
+}
+
+export interface ParserCtor {
+  new (): Parser
+  /**
+   * Instantiate a Parser from a JSON object as returned by
+   * `parser.toJSON()`.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fromJSON(json: ParserJSON | Record<string, any>): Parser
+}
+
+export interface ParserJSON {
+  mathjs: 'Parser'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scope: { [key: string]: any }
 }
 
 export interface Distribution {

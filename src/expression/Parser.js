@@ -1,10 +1,11 @@
 import { factory } from '../utils/factory.js'
 import { createEmptyMap, toObject } from '../utils/map.js'
+import { functionAssignmentNode } from './node/FunctionAssignmentNode.js'
 
 const name = 'Parser'
-const dependencies = ['evaluate', 'parse']
+const dependencies = ['evaluate', 'parse', 'replacer', 'reviver']
 
-export const createParserClass = /* #__PURE__ */ factory(name, dependencies, ({ evaluate, parse }) => {
+export const createParserClass = /* #__PURE__ */ factory(name, dependencies, ({ evaluate, parse, replacer, reviver }) => {
   /**
    * @constructor Parser
    * Parser contains methods to evaluate or parse expressions, and has a number
@@ -155,6 +156,105 @@ export const createParserClass = /* #__PURE__ */ factory(name, dependencies, ({ 
    */
   Parser.prototype.clear = function () {
     this.scope.clear()
+  }
+
+  /**
+   * Get a JSON representation of the parser, containing all variables and
+   * functions in the parsers scope with their mathjs type information.
+   *
+   * Functions defined via the expression parser (for example `f(x) = x^2`)
+   * are serialized as their `FunctionAssignmentNode`. Plain JavaScript
+   * functions inserted via `parser.set(name, fn)` cannot be serialized:
+   * an error is thrown mentioning the name of such a function.
+   *
+   * The representation can be read back using
+   * `JSON.parse(text, math.reviver)`, which returns a Parser instance, or
+   * manually using `Parser.fromJSON(JSON.parse(text))`.
+   *
+   * @returns {Object} Returns a JSON object structured as:
+   *                   `{"mathjs": "Parser", "scope": {...}}`
+   * @throws {Error} when the scope contains a non-serializable JavaScript
+   *                 function inserted via `parser.set`
+   */
+  Parser.prototype.toJSON = function () {
+    const scope = {}
+
+    this.scope.forEach(function (value, key) {
+      if (typeof value === 'function') {
+        const node = value[functionAssignmentNode]
+        if (node) {
+          scope[key] = node
+        } else {
+          throw new Error('Cannot serialize parser: function "' + key +
+            '" is a native JavaScript function and cannot be converted to JSON')
+        }
+      } else {
+        scope[key] = value
+      }
+    })
+
+    // Normalize the scope into plain JSON: invokes the toJSON methods of
+    // mathjs types (Unit, BigNumber, nodes, ...) and handles values like
+    // Infinity via the replacer.
+    const jsonScope = JSON.parse(JSON.stringify(scope, replacer))
+
+    return {
+      mathjs: 'Parser',
+      scope: jsonScope
+    }
+  }
+
+  /**
+   * Instantiate a Parser from a JSON object as returned by
+   * {@link Parser#toJSON}. The plain JSON object passed in (for example the
+   * result of `JSON.parse(text)`) is revived in place: mathjs data types
+   * (Unit, BigNumber, ...) and expression nodes in the scope are restored.
+   * @param {Object} json  a JSON object structured as:
+   *                        `{"mathjs": "Parser", "scope": {...}}`
+   * @return {Parser}
+   */
+  Parser.fromJSON = function (json) {
+    if (!json || json.mathjs !== 'Parser' || !json.scope) {
+      throw new Error('Cannot parse JSON: expected an object with {' +
+        ' mathjs: "Parser" }')
+    }
+
+    // revive mathjs types (Unit, BigNumber, ...) and expression nodes in
+    // the scope, including values nested in objects and arrays. The replacer
+    // is needed in case values were already revived (for example when
+    // fromJSON is invoked by math.reviver), so values like Infinity survive
+    // the intermediate stringify.
+    const scope = JSON.parse(JSON.stringify(json.scope, replacer), reviver)
+
+    const parser = new Parser()
+    const functionNodes = []
+
+    Object.keys(scope).forEach(function (key) {
+      const value = scope[key]
+
+      if (value && value.isFunctionAssignmentNode) {
+        // restore functions in a second pass so all variables and the
+        // functions they depend on are in the scope first
+        functionNodes.push([key, value])
+      } else {
+        parser.scope.set(key, value)
+      }
+    })
+
+    functionNodes.forEach(function (entry) {
+      const key = entry[0]
+      const node = entry[1]
+      // compile and evaluate the assignment, binding it to this parser
+      node.compile().evaluate(parser.scope)
+      // the node's own name can differ from the key in the scope;
+      // bind the compiled function to the scope key instead
+      if (key !== node.name) {
+        parser.scope.set(key, parser.scope.get(node.name))
+        parser.scope.delete(node.name)
+      }
+    })
+
+    return parser
   }
 
   return Parser

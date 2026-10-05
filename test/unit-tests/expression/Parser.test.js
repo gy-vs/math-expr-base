@@ -178,4 +178,171 @@ describe('parser', function () {
   it('should throw an exception when creating a parser without new', function () {
     assert.throws(function () { Parser() }, /Constructor must be called with the new operator/)
   })
+
+  describe('JSON serialization', function () {
+    it('should JSON.stringify a parser with its variables and functions', function () {
+      const parser = new Parser()
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+
+      const json = JSON.parse(JSON.stringify(parser))
+
+      assert.deepStrictEqual(json, {
+        mathjs: 'Parser',
+        scope: {
+          k: 3,
+          f: {
+            mathjs: 'FunctionAssignmentNode',
+            name: 'f',
+            params: [{ name: 'x', type: 'any' }],
+            expr: json.scope.f.expr
+          }
+        }
+      })
+      assert.strictEqual(json.scope.f.expr.mathjs, 'OperatorNode')
+    })
+
+    it('should serialize units, matrices, and big numbers with type info', function () {
+      const parser = new Parser()
+      parser.evaluate('L = 3 cm')
+      parser.evaluate('M = [1, 2; 3, 4]')
+      parser.evaluate('b = bignumber("0.1")')
+
+      const json = JSON.parse(JSON.stringify(parser))
+
+      assert.strictEqual(json.scope.L.mathjs, 'Unit')
+      assert.strictEqual(json.scope.M.mathjs, 'DenseMatrix')
+      assert.strictEqual(json.scope.b.mathjs, 'BigNumber')
+      assert.strictEqual(json.scope.b.value, '0.1')
+    })
+
+    it('should restore a parser via JSON.parse with math.reviver', function () {
+      const parser = new Parser()
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+      parser.evaluate('h(x) = f(x) * 2')
+
+      const restored = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.ok(restored instanceof Parser)
+      assert.strictEqual(restored.evaluate('f(2)'), 7)
+      assert.strictEqual(restored.evaluate('h(2)'), 14)
+    })
+
+    it('should restore variables with their original types', function () {
+      const parser = new Parser()
+      parser.evaluate('L = 3 cm')
+      parser.evaluate('M = [1, 2; 3, 4]')
+      parser.evaluate('b = bignumber("0.1")')
+
+      const restored = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.ok(restored.get('L') instanceof math.Unit)
+      assert.strictEqual(restored.get('L').toString(), '3 cm')
+      assert.ok(restored.get('M') instanceof math.Matrix)
+      assert.deepStrictEqual(restored.get('M').toArray(), [[1, 2], [3, 4]])
+      assert.ok(restored.get('b') instanceof math.BigNumber)
+      assert.strictEqual(restored.get('b').toString(), '0.1')
+    })
+
+    it('should restore functions that call other restored functions', function () {
+      const parser = new Parser()
+      parser.evaluate('a = 10')
+      parser.evaluate('f(x) = x + a')
+      parser.evaluate('g(x) = f(x) * 2')
+      parser.evaluate('h(x) = g(x) - 1')
+
+      const restored = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.strictEqual(restored.evaluate('h(5)'), 29)
+    })
+
+    it('should restore recursive functions', function () {
+      const parser = new Parser()
+      parser.evaluate('fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2)')
+
+      const restored = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.strictEqual(restored.evaluate('fib(10)'), 55)
+    })
+
+    it('should restore an empty parser', function () {
+      const restored = JSON.parse(JSON.stringify(new Parser()), math.reviver)
+
+      assert.ok(restored instanceof Parser)
+      assert.deepStrictEqual(restored.getAll(), {})
+      assert.strictEqual(restored.evaluate('2 + 3'), 5)
+    })
+
+    it('should keep the restored parser independent of the original', function () {
+      const parser = new Parser()
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x + k')
+
+      const restored = JSON.parse(JSON.stringify(parser), math.reviver)
+      restored.evaluate('z = 9')
+      restored.evaluate('k = 100')
+
+      assert.strictEqual(parser.get('z'), undefined)
+      assert.strictEqual(parser.get('k'), 3)
+      assert.strictEqual(parser.evaluate('f(2)'), 5)
+      assert.strictEqual(restored.evaluate('f(2)'), 102)
+    })
+
+    it('should restore a parser via the static Parser.fromJSON', function () {
+      const parser = new Parser()
+      parser.evaluate('k = 3')
+      parser.evaluate('f(x) = x^2 + k')
+
+      const restored = Parser.fromJSON(JSON.parse(JSON.stringify(parser)))
+
+      assert.ok(restored instanceof Parser)
+      assert.strictEqual(restored.evaluate('f(2)'), 7)
+    })
+
+    it('should revive mathjs types nested in objects and arrays', function () {
+      const parser = new Parser()
+      parser.evaluate('o = {u: 2 m, c: [1, 2; 3, 4]}')
+
+      const restored = Parser.fromJSON(JSON.parse(JSON.stringify(parser)))
+
+      assert.ok(restored.get('o').u instanceof math.Unit)
+      assert.ok(restored.get('o').c instanceof math.Matrix)
+    })
+
+    it('should round-trip special numbers like Infinity', function () {
+      const parser = new Parser()
+      parser.set('inf', Infinity)
+
+      const restored = JSON.parse(JSON.stringify(parser), math.reviver)
+
+      assert.strictEqual(restored.get('inf'), Infinity)
+    })
+
+    it('should throw a descriptive error for a native JavaScript function', function () {
+      const parser = new Parser()
+      parser.set('helper', function (x) {
+        return x + 1
+      })
+
+      assert.throws(function () {
+        JSON.stringify(parser)
+      }, /Cannot serialize parser: function "helper" is a native JavaScript function/)
+    })
+
+    it('should not throw for functions assigned via the expression parser', function () {
+      const parser = new Parser()
+      parser.evaluate('f(x) = x + 1')
+
+      assert.doesNotThrow(function () {
+        JSON.stringify(parser)
+      })
+    })
+
+    it('should throw when fromJSON receives an invalid object', function () {
+      assert.throws(function () {
+        Parser.fromJSON({})
+      }, /Cannot parse JSON: expected an object with \{ mathjs: "Parser" \}/)
+    })
+  })
 })
